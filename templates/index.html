@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CBIR Search</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 50px; background: #f9fafb; }
+    input, button { margin: 10px; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
+    button { background: #2563eb; color: white; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>🔍 Upload an Image to Search</h2>
+  <form action="/search" method="POST" enctype="multipart/form-data">
+    <input type="file" name="query_image" accept="image/*" required><br>
+    <label>How many top similar images?</label><br>
+    <input type="number" name="top_n" value="10" min="1" max="50" required><br>
+    <button type="submit">Search</button>
+  </form>
+</body>
+</html>
