@@ -3,75 +3,87 @@ import pickle
 import numpy as np
 from PIL import Image
 import torch
+import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 from sklearn.metrics.pairwise import cosine_similarity
 import shutil
 
-# Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-RAW_DIR = os.path.join(BASE_DIR, "dataset", "raw")
-FEATURES_PATH = os.path.join(BASE_DIR, "features", "features.pkl")
-RESULTS_DIR = os.path.join(BASE_DIR, "results")
+# ✅ Load features and image paths
+FEATURES_PATH = "features/features.pkl"
 
-# Load pre-extracted features
+if not os.path.exists(FEATURES_PATH):
+    print("❌ No features found. Please run 'python preprocess/preprocess.py' first.")
+    exit()
+
 with open(FEATURES_PATH, "rb") as f:
-    features_dict = pickle.load(f)
+    features, image_paths = pickle.load(f)
 
-# CNN model for feature extraction
-def load_model():
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    model = torch.nn.Sequential(*list(model.children())[:-1])
-    model.eval()
-    return model
+features = np.array(features)
 
-model = load_model()
+print("✅ Features loaded successfully.")
+print("Total images in dataset:", len(features))
 
-# Preprocess image
-def extract_features(img_path):
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
-    ])
-    img = Image.open(img_path).convert("RGB")
-    img_tensor = transform(img).unsqueeze(0)
+# ✅ Load pretrained ResNet50 (same as used in preprocessing)
+model = models.resnet50(weights="IMAGENET1K_V1")
+model = nn.Sequential(*list(model.children())[:-1])
+model.eval()
+
+# ✅ Define preprocessing
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
+
+def extract_features(image_path):
+    """Extract feature vector from a single image"""
+    image = Image.open(image_path).convert("RGB")
+    image = transform(image).unsqueeze(0)
     with torch.no_grad():
-        feature = model(img_tensor).squeeze().numpy()
-    return feature
+        feat = model(image).squeeze().numpy()
+    return feat
 
-# Find top similar images
-def find_similar_images(query_img_path, top_n=10):
-    query_feature = extract_features(query_img_path)
-    all_features = np.array(list(features_dict.values()))
-    all_image_paths = list(features_dict.keys())
+# === Main Logic ===
+query_path = input("\nEnter the path of query image (e.g., dataset/raw/flower1.jpg): ").strip()
 
-    similarities = cosine_similarity([query_feature], all_features)[0]
-    sorted_indices = np.argsort(similarities)[::-1]
+if not os.path.exists(query_path):
+    print("❌ Image not found. Check your path.")
+    exit()
 
-    top_images = [(all_image_paths[i], similarities[i]) for i in sorted_indices[:top_n]]
-    return top_images
+top_n = int(input("\nEnter how many top similar images to display: "))
 
-# Download selected similar images
-def download_similar_images(top_images, count=5):
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    for i, (img_path, sim) in enumerate(top_images[:count]):
-        dest_path = os.path.join(RESULTS_DIR, f"similar_{i+1}.jpg")
-        shutil.copy(img_path, dest_path)
-    print(f"✅ {count} similar images saved in 'results/' folder.")
+# Extract features for query image
+query_features = extract_features(query_path)
 
-# --- Main Program ---
-if __name__ == "__main__":
-    print("🔍 Content-Based Image Retrieval System")
-    query_img = input("Enter path of the query image (from dataset/raw): ").strip()
-    top_n = int(input("Enter how many top similar images to search (e.g., 10): "))
-    download_count = int(input("How many images to download (e.g., 5): "))
+# Calculate cosine similarity
+similarities = cosine_similarity([query_features], features)[0]
+sorted_indices = np.argsort(similarities)[::-1][:top_n]
 
-    results = find_similar_images(query_img, top_n=top_n)
+# Display results
+print("\n🔍 Top", top_n, "most similar images:\n")
+for i, idx in enumerate(sorted_indices):
+    print(f"{i+1}. {image_paths[idx]} (similarity: {similarities[idx]:.4f})")
 
-    print("\nTop similar images:")
-    for i, (path, sim) in enumerate(results):
-        print(f"{i+1}. {path} (Similarity: {sim:.4f})")
+# === ⭐ Feedback Section ===
+feedback = input("\nWould you like to give feedback? (y/n): ").strip().lower()
+if feedback == "y":
+    print("\nPlease rate each retrieved image from 1⭐ to 5⭐:")
+    for i, idx in enumerate(sorted_indices):
+        rating = input(f"⭐ {image_paths[idx]}: ")
+        print(f"✅ You rated {rating} stars for {os.path.basename(image_paths[idx])}")
 
-    download_similar_images(results, download_count)
+# === 📥 Download Option ===
+download_choice = input("\nDo you want to save these similar images? (y/n): ").strip().lower()
+if download_choice == "y":
+    os.makedirs("downloaded_results", exist_ok=True)
+    for i, idx in enumerate(sorted_indices):
+        src = image_paths[idx]
+        dest = os.path.join("downloaded_results", os.path.basename(src))
+        shutil.copy(src, dest)
+    print("📥 All similar images saved in 'downloaded_results' folder.")
+
+print("\n🎉 Search completed successfully!")

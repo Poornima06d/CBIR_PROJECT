@@ -1,74 +1,81 @@
 import os
 import pickle
 import numpy as np
-from tqdm import tqdm
 from PIL import Image
 import torch
+import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
+from pathlib import Path
 
-# -----------------------------
-# ✅ Folder setup
-# -----------------------------
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-RAW_DIR = os.path.join(BASE_DIR, "dataset", "raw")
-FEATURES_PATH = os.path.join(BASE_DIR, "features", "features.pkl")
 
-os.makedirs(RAW_DIR, exist_ok=True)
-os.makedirs(os.path.dirname(FEATURES_PATH), exist_ok=True)
+# Paths
+BASE_DIR = Path(__file__).resolve().parent
+DATASET_DIR = BASE_DIR.parent / "dataset" / "raw"
 
-# -----------------------------
-# ✅ Load pretrained ResNet50
-# -----------------------------
-print("🔹 Loading ResNet50 model...")
-model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-model = torch.nn.Sequential(*list(model.children())[:-1])  # remove classification layer
+FEATURES_DIR = BASE_DIR / "features"
+FEATURES_FILE = FEATURES_DIR / "features.pkl"
+
+# Create folder if not exists
+FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+
+# ✅ Load pretrained ResNet50 model
+try:
+    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+except Exception:
+    model = models.resnet50(pretrained=True)
+
+model = nn.Sequential(*list(model.children())[:-1])  # remove final layer
 model.eval()
 
-# -----------------------------
-# ✅ Image preprocessing pipeline
-# -----------------------------
+# ✅ Preprocessing pipeline
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.ToTensor()
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
 ])
 
 def extract_features(image_path):
-    """Extract normalized 2048-D feature vector for one image"""
-    try:
-        img = Image.open(image_path).convert("RGB")
-        img_tensor = transform(img).unsqueeze(0)
+    """Extract and normalize feature vector for an image."""
+    image = Image.open(image_path).convert("RGB")
+    image = transform(image).unsqueeze(0)
+    with torch.no_grad():
+        features = model(image).squeeze().numpy()
+    features = features.reshape(-1)
+    norm = np.linalg.norm(features)
+    if norm > 0:
+        features = features / norm
+    return features
 
-        with torch.no_grad():
-            features = model(img_tensor).squeeze().numpy()
-        features = features / np.linalg.norm(features)  # normalize
+def main():
+    if not DATASET_DIR.exists():
+        print(f"❌ Dataset folder not found: {DATASET_DIR}")
+        return
 
-        return features
-    except Exception as e:
-        print(f"⚠️ Skipping {image_path} due to error: {e}")
-        return None
+    features_list = []
+    image_paths = []
 
-# -----------------------------
-# ✅ Extract and save features
-# -----------------------------
-features_dict = {}
+    print(f"🔍 Extracting features from images in: {DATASET_DIR}")
 
-print("🔹 Extracting features from images...")
+    for file in sorted(DATASET_DIR.iterdir()):
+        if file.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+            try:
+                feat = extract_features(str(file))
+                features_list.append(feat)
+                image_paths.append(str(file))
+                print(f"✅ Processed: {file.name}")
+            except Exception as e:
+                print(f"⚠️ Skipped {file.name}: {e}")
 
-for file in tqdm(os.listdir(RAW_DIR)):
-    if file.lower().endswith((".jpg", ".jpeg", ".png")):
-        img_path = os.path.join(RAW_DIR, file)
-        feat = extract_features(img_path)
-        if feat is not None and len(feat) == 2048:
-            features_dict[file] = feat
-        else:
-            print(f"⚠️ Skipped {file}: invalid feature shape.")
+    # Save features and paths together
+    with open(FEATURES_FILE, "wb") as f:
+        pickle.dump((features_list, image_paths), f)
 
-# -----------------------------
-# ✅ Save to pickle
-# -----------------------------
-with open(FEATURES_PATH, "wb") as f:
-    pickle.dump(features_dict, f)
+    print(f"\n🎯 Features extracted and saved to: {FEATURES_FILE}")
+    print(f"Total images processed: {len(features_list)}")
 
-print(f"✅ Features extracted and saved to '{FEATURES_PATH}'")
-print(f"📦 Total valid images processed: {len(features_dict)}")
+if __name__ == "__main__":
+    main()
