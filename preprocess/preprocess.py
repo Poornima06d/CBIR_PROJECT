@@ -1,81 +1,48 @@
 import os
-import pickle
+import cv2
 import numpy as np
-from PIL import Image
-import torch
-import torch.nn as nn
-import torchvision.models as models
-import torchvision.transforms as transforms
-from pathlib import Path
-
+import pickle
 
 # Paths
-BASE_DIR = Path(__file__).resolve().parent
-DATASET_DIR = BASE_DIR.parent / "dataset" / "raw"
+dataset_path = "dataset/raw"
+features_dir = "preprocess/features"
+features_path = os.path.join(features_dir, "features.pkl")
 
-FEATURES_DIR = BASE_DIR / "features"
-FEATURES_FILE = FEATURES_DIR / "features.pkl"
+# Ensure feature directory exists
+os.makedirs(features_dir, exist_ok=True)
 
-# Create folder if not exists
-FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+# Check dataset
+if not os.path.exists(dataset_path):
+    print(f"❌ Dataset folder not found: {os.path.abspath(dataset_path)}")
+    exit()
 
-# ✅ Load pretrained ResNet50 model
-try:
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-except Exception:
-    model = models.resnet50(pretrained=True)
+features = []
+image_paths = []
 
-model = nn.Sequential(*list(model.children())[:-1])  # remove final layer
-model.eval()
+print(f"🔍 Extracting features from images in: {os.path.abspath(dataset_path)}")
 
-# ✅ Preprocessing pipeline
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
+# Loop through dataset images
+for img_name in os.listdir(dataset_path):
+    img_path = os.path.join(dataset_path, img_name)
+    image = cv2.imread(img_path)
+    if image is None:
+        print(f"⚠️ Skipping unreadable image: {img_name}")
+        continue
 
-def extract_features(image_path):
-    """Extract and normalize feature vector for an image."""
-    image = Image.open(image_path).convert("RGB")
-    image = transform(image).unsqueeze(0)
-    with torch.no_grad():
-        features = model(image).squeeze().numpy()
-    features = features.reshape(-1)
-    norm = np.linalg.norm(features)
-    if norm > 0:
-        features = features / norm
-    return features
+    # Resize and extract HSV color histogram
+    image = cv2.resize(image, (256, 256))
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 8, 8],
+                        [0, 180, 0, 256, 0, 256])
+    cv2.normalize(hist, hist)
 
-def main():
-    if not DATASET_DIR.exists():
-        print(f"❌ Dataset folder not found: {DATASET_DIR}")
-        return
+    features.append(hist.flatten())
+    image_paths.append(img_path)
+    print(f"✅ Processed: {img_name}")
 
-    features_list = []
-    image_paths = []
+# Save features
+with open(features_path, "wb") as f:
+    pickle.dump({"features": np.array(features), "image_paths": image_paths}, f)
 
-    print(f"🔍 Extracting features from images in: {DATASET_DIR}")
-
-    for file in sorted(DATASET_DIR.iterdir()):
-        if file.suffix.lower() in [".jpg", ".jpeg", ".png"]:
-            try:
-                feat = extract_features(str(file))
-                features_list.append(feat)
-                image_paths.append(str(file))
-                print(f"✅ Processed: {file.name}")
-            except Exception as e:
-                print(f"⚠️ Skipped {file.name}: {e}")
-
-    # Save features and paths together
-    with open(FEATURES_FILE, "wb") as f:
-        pickle.dump((features_list, image_paths), f)
-
-    print(f"\n🎯 Features extracted and saved to: {FEATURES_FILE}")
-    print(f"Total images processed: {len(features_list)}")
-
-if __name__ == "__main__":
-    main()
+print(f"\n🎯 Features extracted and saved to: {os.path.abspath(features_path)}")
+print(f"Total images processed: {len(image_paths)}")
