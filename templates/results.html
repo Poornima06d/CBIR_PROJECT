@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Results — CBIR</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="bg-anim"></div>
+
+  <div class="card results-card">
+    <h2>Results</h2>
+
+    <div class="query-preview">
+      <div>
+        <p><strong>Query Image</strong></p>
+        <img src="/static/results/{{ query }}" alt="query" class="preview-img">
+      </div>
+      <div class="stats">
+        <p><strong>Total matches:</strong> {{ total }}</p>
+        <button class="btn" onclick="window.location='/'">🔎 New Search</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      {% for r in results %}
+      <div class="card-item">
+        <img src="/static/results/{{ r.name }}" onclick="openFullscreen(this)" alt="{{ r.name }}">
+        <div class="meta">
+          <div class="fname">{{ r.name }}</div>
+          <div class="score">score: {{ r.score }}</div>
+        </div>
+        <label class="select-label">
+          <input type="checkbox" name="select" value="{{ r.name }}"> Select
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button class="btn" onclick="downloadSelected()">⬇ Download Selected</button>
+      <button class="btn" onclick="submitFeedback(true)">👍 Relevant</button>
+      <button class="btn" onclick="submitFeedback(false)">👎 Not Relevant</button>
+    </div>
+  </div>
+
+<script>
+function openFullscreen(img){
+  const win = window.open("");
+  win.document.write("<img src='"+img.src+"' style='width:100%'>");
+}
+
+function downloadSelected(){
+  const checked = Array.from(document.querySelectorAll("input[name='select']:checked")).map(i=>i.value);
+  if(checked.length===0){ alert("Select at least one image"); return; }
+  fetch("/download", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({images: checked})})
+    .then(r=>r.blob()).then(blob=>{
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "similar_images.zip";
+      a.click();
+    });
+}
+
+function submitFeedback(isRelevant){
+  // gather displayed names
+  const names = Array.from(document.querySelectorAll(".grid img")).map(i=>i.getAttribute("src").split("/").pop());
+  fetch("/feedback", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({images: names, relevant: isRelevant})
+  }).then(()=>alert("Feedback saved, thanks!"));
+}
+</script>
+</body>
+</html>

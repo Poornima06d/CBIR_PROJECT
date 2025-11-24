@@ -1,48 +1,51 @@
+# preprocess/preprocess.py
 import os
 import cv2
 import numpy as np
 import pickle
 
-# Paths
-dataset_path = "dataset/raw"
-features_dir = "preprocess/features"
-features_path = os.path.join(features_dir, "features.pkl")
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATASET_DIR = os.path.join(BASE_DIR, "dataset", "raw")
+OUT_DIR = os.path.join(BASE_DIR, "preprocess", "features")
+os.makedirs(OUT_DIR, exist_ok=True)
+FEATURES_PATH = os.path.join(OUT_DIR, "features.pkl")
 
-# Ensure feature directory exists
-os.makedirs(features_dir, exist_ok=True)
-
-# Check dataset
-if not os.path.exists(dataset_path):
-    print(f"❌ Dataset folder not found: {os.path.abspath(dataset_path)}")
-    exit()
-
-features = []
-image_paths = []
-
-print(f"🔍 Extracting features from images in: {os.path.abspath(dataset_path)}")
-
-# Loop through dataset images
-for img_name in os.listdir(dataset_path):
-    img_path = os.path.join(dataset_path, img_name)
-    image = cv2.imread(img_path)
-    if image is None:
-        print(f"⚠️ Skipping unreadable image: {img_name}")
-        continue
-
-    # Resize and extract HSV color histogram
-    image = cv2.resize(image, (256, 256))
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 8, 8],
-                        [0, 180, 0, 256, 0, 256])
+def extract_histogram(image_path, size=(256,256)):
+    img = cv2.imread(image_path)
+    if img is None:
+        return None
+    img = cv2.resize(img, size)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0,1,2], None, [8,8,8], [0,180,0,256,0,256])
     cv2.normalize(hist, hist)
+    return hist.flatten()
 
-    features.append(hist.flatten())
-    image_paths.append(img_path)
-    print(f"✅ Processed: {img_name}")
+def main():
+    if not os.path.exists(DATASET_DIR):
+        print("Dataset folder not found:", DATASET_DIR)
+        return
 
-# Save features
-with open(features_path, "wb") as f:
-    pickle.dump({"features": np.array(features), "image_paths": image_paths}, f)
+    features = []
+    image_paths = []
 
-print(f"\n🎯 Features extracted and saved to: {os.path.abspath(features_path)}")
-print(f"Total images processed: {len(image_paths)}")
+    files = sorted([f for f in os.listdir(DATASET_DIR) if f.lower().endswith(('.jpg','.jpeg','.png'))])
+    print(f"Found {len(files)} images in dataset.")
+    for fname in files:
+        p = os.path.join(DATASET_DIR, fname)
+        feat = extract_histogram(p)
+        if feat is None:
+            print("Skipping unreadable:", fname)
+            continue
+        features.append(feat)
+        image_paths.append(fname)   # store basename for convenience
+        print("Processed:", fname)
+
+    with open(FEATURES_PATH, "wb") as f:
+        # Save as tuple: (features_list, image_paths_list)
+        pickle.dump((features, image_paths), f)
+
+    print("Saved features to:", FEATURES_PATH)
+    print("Total images processed:", len(image_paths))
+
+if __name__ == "__main__":
+    main()

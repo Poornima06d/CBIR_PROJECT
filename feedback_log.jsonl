@@ -1,0 +1,31 @@
+{
+  "images": [
+    "11.jpeg",
+    "3.jpeg",
+    "16.jpeg",
+    "1.jpeg",
+    "flower.jpeg"
+  ],
+  "relevant": true
+}
+
+{
+  "images": [
+    "11.jpeg",
+    "3.jpeg",
+    "16.jpeg",
+    "1.jpeg",
+    "flower.jpeg",
+    "4.jpeg"
+  ],
+  "relevant": false
+}
+
+{
+  "images": [
+    "1f.jpeg",
+    "7.jpeg"
+  ],
+  "relevant": false
+}
+

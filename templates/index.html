@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CBIR Image Search</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="bg-anim"></div>
+
+  <div class="card">
+    <h1>🔎 CBIR Image Search</h1>
+    <p class="muted">Upload or capture an image to find visually similar images</p>
+
+    <form id="uploadForm" action="/search" method="POST" enctype="multipart/form-data">
+      <div class="upload-row">
+        <label class="btn file-btn">
+          📁 Select Image
+          <input type="file" name="query_image" accept="image/*" required>
+        </label>
+
+        <button type="button" class="btn camera-btn" onclick="openCamera()">📷 Use Camera</button>
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" name="query_image">
+      </div>
+
+      <div class="controls">
+        <label>How many results?</label>
+        <input class="num" type="number" name="top_n" min="1" max="50" value="10">
+      </div>
+
+      <button type="submit" class="search-btn">Search Similar Images</button>
+    </form>
+
+    <p class="hint">Tip: Use phone camera or drag & drop (desktop browsers that support it)</p>
+  </div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
