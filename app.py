@@ -7,6 +7,7 @@ import zipfile
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 import cv2
+import json
 
 app = Flask(__name__)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -47,7 +48,6 @@ else:
     else:
         # fallback: try to parse dict style
         try:
-            # if dict mapping basename -> vector
             features_arr = np.array(list(data.values()))
             image_paths = list(data.keys())
         except Exception:
@@ -70,6 +70,12 @@ def search():
 
     top_n = int(request.form.get("top_n", 10))
     filename = secure_filename(file.filename)
+
+    # --- Clear previous results ---
+    for f in os.listdir(RESULTS_FOLDER):
+        os.remove(os.path.join(RESULTS_FOLDER, f))
+
+    # --- Save query image ---
     query_save_path = os.path.join(RESULTS_FOLDER, filename)
     file.save(query_save_path)
 
@@ -92,6 +98,9 @@ def search():
         dst = os.path.join(RESULTS_FOLDER, name)
         if os.path.exists(src):
             shutil.copy(src, dst)
+            print(f"Copied: {src} -> {dst}")  # debug print
+        else:
+            print(f"⚠ File not found in dataset: {src}")
         results.append({"name": name, "score": round(score, 4)})
 
     return render_template("results.html", query=filename, results=results, total=len(results))
@@ -114,10 +123,9 @@ def download():
 @app.route("/feedback", methods=["POST"])
 def feedback():
     payload = request.get_json()
-    # store simple feedback log as JSON lines
     fb_path = os.path.join(BASE_DIR, "feedback_log.jsonl")
     with open(fb_path, "a", encoding="utf-8") as f:
-        f.write(jsonify(payload).get_data(as_text=True) + "\n")
+        f.write(json.dumps(payload) + "\n")
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
